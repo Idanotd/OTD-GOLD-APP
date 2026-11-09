@@ -115,13 +115,20 @@ html,body{margin:0;color:var(--text);
 .formula{font:12px/1.6 ui-monospace,Menlo,monospace;background:var(--field);border-radius:8px;padding:8px 10px;margin-top:10px}
 .formula .g{color:var(--green)} .formula .b{color:var(--blue)}
 .krow{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
-.krow b{width:44px;font-size:16px}
-.krow small{width:52px;color:var(--muted);font-size:12px}
-.krow span{font-weight:700;color:var(--muted)}
-.krow input{flex:1;min-width:0;height:40px;border-radius:8px;border:1.5px solid var(--line);background:var(--field);color:var(--text);font-size:17px;font-weight:700;text-align:right;padding:0 10px;outline:none}
-.krow.add input:first-child{flex:0 0 70px}
+.krow{gap:6px}
+.krow b{flex:0 0 40px;font-size:15px}
+.krow input{flex:1;min-width:0;height:38px;border-radius:8px;border:1.5px solid var(--line);background:var(--field);color:var(--text);font-size:16px;font-weight:700;text-align:right;padding:0 8px;outline:none}
+.krow.add #kNew{flex:0 0 40px;padding:0 4px;text-align:center}
+.krow.off b,.krow.off input{opacity:.45}
+.khead{border-bottom:0;padding-bottom:0;font-size:10px;font-weight:800;color:var(--muted)}
+.khead b{font-size:10px} .khead span{flex:1;text-align:right;padding-right:8px} .khead i{flex:0 0 32px}
+.khead .ksw{flex:0 0 44px;text-align:left;padding:0}
+.ksw{flex:0 0 44px}
+.tog{position:relative;flex:0 0 44px;width:44px;height:26px;border-radius:13px;border:0;background:#c9ccd3;cursor:pointer;padding:0}
+.tog::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .15s}
+.tog.on{background:var(--green)} .tog.on::after{left:21px}
 .krow input:focus{border-color:var(--orange)}
-.kbtn{border:0;width:36px;height:36px;border-radius:50%;color:#fff;font-size:22px;font-weight:800;line-height:1;cursor:pointer;flex:0 0 36px}
+.kbtn{border:0;width:32px;height:32px;border-radius:50%;color:#fff;font-size:22px;font-weight:800;line-height:1;cursor:pointer;flex:0 0 32px}
 .kbtn.minus{background:var(--red)} .kbtn.plus{background:var(--green)}
 .sectitle{font-size:11px;font-weight:800;color:var(--muted);margin:16px 0 0;letter-spacing:.4px}
 </style>
@@ -179,12 +186,14 @@ html,body{margin:0;color:var(--text);
     <span class="g">FULL = grams × purity × Pure $/g</span><br>
     <span class="b">MELT = SPOT × Melt purity × Refinery % × Payout %</span>
   </div>
-  <div class="sectitle">GOLD KARATS (FULL = KARAT ÷ 24 · MELT = REFINERY PURITY)</div>
+  <div class="sectitle">GOLD KARATS · TURN ON THE ONES YOU NEED</div>
+  <div class="krow khead"><span class="ksw">Show</span><b>Karat</b><span>Full purity</span><span>Melt purity</span><i></i></div>
   <div id="karatList"></div>
-  <div class="krow add"><input id="kNew" class="num" inputmode="numeric" placeholder="Karat" autocomplete="off"><span>K</span>
-    <input id="mNew" class="num" inputmode="decimal" placeholder="Melt e.g. .375" autocomplete="off">
+  <div class="krow add"><span class="ksw"></span><input id="kNew" class="num" inputmode="numeric" placeholder="K" autocomplete="off">
+    <input id="fNew" class="num" inputmode="decimal" placeholder="Full" autocomplete="off">
+    <input id="mNew" class="num" inputmode="decimal" placeholder="Melt" autocomplete="off">
     <button class="kbtn plus" id="kAdd" aria-label="Add karat">+</button></div>
-  <p class="hint" id="kHint">Add any karat (for example 9, 12, 16, 20, 21). If you leave melt empty, it uses the full purity.</p>
+  <p class="hint" id="kHint">To add a karat, type it (for example 19) and press +. Full purity fills in by itself (karat ÷ 24). If melt is empty, it uses the full purity.</p>
   <div class="sectitle">RESET</div>
   <button class="btn sec2" id="setClear">Clear all weights</button>
   <button class="btn dan" id="setReset">Reset everything</button>
@@ -214,10 +223,12 @@ var METALS = [
 var PRESETS = [70,80,85,90,98,100];
 var KEY = "metalcalc.v1";
 
-var GOLD_DEFAULT=[{k:10,m:0.39},{k:14,m:0.56},{k:18,m:0.72},{k:22,m:0.90},{k:24,m:0.99}];
+var GOLD_DEFAULT=[{k:9,m:0.375,on:false},{k:10,m:0.39,on:true},{k:12,m:0.5,on:false},{k:14,m:0.56,on:true},
+  {k:16,m:0.6667,on:false},{k:18,m:0.72,on:true},{k:20,m:0.8333,on:false},{k:21,m:0.85,on:false},
+  {k:22,m:0.90,on:true},{k:24,m:0.99,on:true}];
 function defaults(){
   return {weights:{}, payoutText:"85", payout:85, refinery:{gold:100,platinum:100,silver:100},
-          gold:GOLD_DEFAULT.map(function(g){ return {k:g.k,m:g.m}; }),
+          gold:GOLD_DEFAULT.map(function(g){ return {k:g.k,f:goldFull(g.k),m:g.m,on:g.on}; }),
           manual:{}, manualAt:{}, live:{}, liveAt:{}};
 }
 var S = defaults();
@@ -228,9 +239,15 @@ function fmtM(v){ var t=String(Math.round(v*10000)/10000); if(/^0\.\d$/.test(t))
 function goldFull(k){ return k>=24?0.999:k/24; }
 function syncGold(){
   if(!Array.isArray(S.gold)||!S.gold.length) S.gold=defaults().gold;
+  if(S.gold.some(function(g){ return g.on===undefined; })){ // older saved list: keep its karats turned on, add the rest off
+    var old=S.gold; S.gold=defaults().gold.map(function(d){ d.on=false; return d; });
+    old.forEach(function(o){ var d=S.gold.filter(function(x){ return x.k===o.k; })[0];
+      if(d){ d.on=true; d.m=o.m; } else S.gold.push({k:o.k,f:goldFull(o.k),m:o.m,on:true}); });
+  }
+  S.gold.forEach(function(g){ if(!(g.f>0)) g.f=goldFull(g.k); });
   S.gold.sort(function(a,b){ return a.k-b.k; });
-  METALS[0].purities=S.gold.map(function(g){ var f=goldFull(g.k);
-    return {id:"au"+g.k, l:g.k+"K", d:fmt3(f)+"<br>melt "+fmtM(g.m), f:f, m:g.m}; });
+  METALS[0].purities=S.gold.filter(function(g){ return g.on; }).map(function(g){
+    return {id:"au"+g.k, l:g.k+"K", d:fmt3(g.f)+"<br>melt "+fmtM(g.m), f:g.f, m:g.m}; });
 }
 syncGold();
 
@@ -383,29 +400,37 @@ METALS.forEach(function(M){
     S.refinery[M.id]=c===""?100:Math.max(0,Math.min(100,num(c))); save(); update(); });
   i.dataset.metal=M.id; refWrap.appendChild(d);
 });
+function goldChanged(){ syncGold(); buildSections(); save(); update(); }
+function readPur(v){ v=num(v); if(v>1) v=v/100; return v; }
 function renderKarats(){
   var box=$("karatList"); box.innerHTML="";
   S.gold.forEach(function(g){
-    var r=document.createElement("div"); r.className="krow";
-    r.innerHTML='<b>'+g.k+'K</b><small>full '+fmt3(goldFull(g.k))+'</small><span>melt</span><input class="num" inputmode="decimal" autocomplete="off"><button class="kbtn minus" aria-label="Remove">−</button>';
-    var i=r.querySelector("input"); i.value=g.m;
-    i.addEventListener("input",function(){ var c=clean(i.value); if(c!==i.value) i.value=c;
-      var v=num(c); if(v>1) v=v/100; if(v>0){ g.m=v; syncGold(); buildSections(); save(); update(); } });
-    r.querySelector("button").addEventListener("click",function(){
+    var r=document.createElement("div"); r.className="krow"+(g.on?"":" off");
+    r.innerHTML='<button class="tog'+(g.on?' on':'')+'" aria-label="Show on main screen"></button><b>'+g.k+'K</b>'+
+      '<input class="num" inputmode="decimal" autocomplete="off"><input class="num" inputmode="decimal" autocomplete="off">'+
+      '<button class="kbtn minus" aria-label="Remove">−</button>';
+    var ins=r.querySelectorAll("input"); ins[0].value=fmt3(g.f); ins[1].value=fmtM(g.m);
+    r.querySelector(".tog").addEventListener("click",function(){ g.on=!g.on;
+      this.classList.toggle("on",g.on); r.classList.toggle("off",!g.on); goldChanged(); });
+    ins[0].addEventListener("input",function(){ var c=clean(this.value); if(c!==this.value) this.value=c; var v=readPur(c); if(v>0){ g.f=v; goldChanged(); } });
+    ins[1].addEventListener("input",function(){ var c=clean(this.value); if(c!==this.value) this.value=c; var v=readPur(c); if(v>0){ g.m=v; goldChanged(); } });
+    r.querySelector(".kbtn").addEventListener("click",function(){
       if(S.gold.length<=1) return;
       S.gold=S.gold.filter(function(x){ return x!==g; }); delete S.weights["au"+g.k];
-      syncGold(); buildSections(); renderKarats(); save(); update(); });
+      renderKarats(); goldChanged(); });
     box.appendChild(r);
   });
 }
+$("kNew").addEventListener("input",function(){ var k=Math.round(num(this.value)); $("fNew").placeholder= (k>=1&&k<=24)? fmt3(goldFull(k)) : "Full"; });
 $("kAdd").addEventListener("click",function(){
-  var k=Math.round(num($("kNew").value)), mv=num($("mNew").value); if(mv>1) mv=mv/100;
+  var k=Math.round(num($("kNew").value)), fv=readPur($("fNew").value), mv=readPur($("mNew").value);
   var h=$("kHint");
   if(!(k>=1&&k<=24)){ h.textContent="Enter a karat between 1 and 24."; return; }
-  if(S.gold.some(function(g){ return g.k===k; })){ h.textContent=k+"K is already in the list."; return; }
-  S.gold.push({k:k,m:mv>0?Math.round(mv*10000)/10000:Math.round(goldFull(k)*1000)/1000});
-  $("kNew").value=""; $("mNew").value=""; h.textContent=k+"K added.";
-  syncGold(); buildSections(); renderKarats(); save(); update();
+  if(S.gold.some(function(g){ return g.k===k; })){ h.textContent=k+"K is already in the list. Turn it on with the switch."; return; }
+  var f=fv>0?fv:goldFull(k);
+  S.gold.push({k:k,f:f,m:mv>0?mv:f,on:true});
+  $("kNew").value=""; $("fNew").value=""; $("mNew").value=""; $("fNew").placeholder="Full"; h.textContent=k+"K added and turned on.";
+  goldChanged(); renderKarats();
 });
 $("btnSettings").addEventListener("click",function(){ renderKarats(); show("ovSet"); });
 

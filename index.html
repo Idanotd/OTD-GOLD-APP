@@ -114,6 +114,15 @@ html,body{margin:0;color:var(--text);
 .btn.dan{background:transparent;color:var(--red);border:1.5px solid var(--red)}
 .formula{font:12px/1.6 ui-monospace,Menlo,monospace;background:var(--field);border-radius:8px;padding:8px 10px;margin-top:10px}
 .formula .g{color:var(--green)} .formula .b{color:var(--blue)}
+.krow{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.krow b{width:44px;font-size:16px}
+.krow small{width:52px;color:var(--muted);font-size:12px}
+.krow span{font-weight:700;color:var(--muted)}
+.krow input{flex:1;min-width:0;height:40px;border-radius:8px;border:1.5px solid var(--line);background:var(--field);color:var(--text);font-size:17px;font-weight:700;text-align:right;padding:0 10px;outline:none}
+.krow.add input:first-child{flex:0 0 70px}
+.krow input:focus{border-color:var(--orange)}
+.kbtn{border:0;width:36px;height:36px;border-radius:50%;color:#fff;font-size:22px;font-weight:800;line-height:1;cursor:pointer;flex:0 0 36px}
+.kbtn.minus{background:var(--red)} .kbtn.plus{background:var(--green)}
 .sectitle{font-size:11px;font-weight:800;color:var(--muted);margin:16px 0 0;letter-spacing:.4px}
 </style>
 </head>
@@ -170,10 +179,16 @@ html,body{margin:0;color:var(--text);
     <span class="g">FULL = grams × purity × Pure $/g</span><br>
     <span class="b">MELT = SPOT × Melt purity × Refinery % × Payout %</span>
   </div>
+  <div class="sectitle">GOLD KARATS (FULL = KARAT ÷ 24 · MELT = REFINERY PURITY)</div>
+  <div id="karatList"></div>
+  <div class="krow add"><input id="kNew" class="num" inputmode="numeric" placeholder="Karat" autocomplete="off"><span>K</span>
+    <input id="mNew" class="num" inputmode="decimal" placeholder="Melt e.g. .375" autocomplete="off">
+    <button class="kbtn plus" id="kAdd" aria-label="Add karat">+</button></div>
+  <p class="hint" id="kHint">Add any karat (for example 9, 12, 16, 20, 21). If you leave melt empty, it uses the full purity.</p>
   <div class="sectitle">RESET</div>
   <button class="btn sec2" id="setClear">Clear all weights</button>
   <button class="btn dan" id="setReset">Reset everything</button>
-  <p class="hint" id="resetHint">Reset clears weights, payout %, refinery basis and spot prices.</p>
+  <p class="hint" id="resetHint">Reset clears weights, payout %, refinery basis, gold karats and spot prices.</p>
 </div></div>
 
 <!-- Confirm sheet -->
@@ -188,10 +203,7 @@ html,body{margin:0;color:var(--text);
 "use strict";
 var OZ = 31.1034768;
 var METALS = [
-  {id:"gold", name:"Gold", sym:"XAU", purities:[
-    {id:"au10",l:"10K",d:".417<br>melt .39",f:10/24,m:0.39},{id:"au14",l:"14K",d:".583<br>melt .56",f:14/24,m:0.56},
-    {id:"au18",l:"18K",d:".750<br>melt .72",f:18/24,m:0.72},{id:"au22",l:"22K",d:".917<br>melt .90",f:22/24,m:0.90},
-    {id:"au24",l:"24K",d:".999<br>melt .99",f:0.999,m:0.99}]},
+  {id:"gold", name:"Gold", sym:"XAU", purities:[]},
   {id:"platinum", name:"Platinum", sym:"XPT", purities:[
     {id:"pt900",l:"PT900",d:".900",f:0.900},{id:"pt950",l:"PT950",d:".950",f:0.950},
     {id:"pt999",l:"PT999",d:".999",f:0.999}]},
@@ -202,13 +214,25 @@ var METALS = [
 var PRESETS = [70,80,85,90,98,100];
 var KEY = "metalcalc.v1";
 
+var GOLD_DEFAULT=[{k:10,m:0.39},{k:14,m:0.56},{k:18,m:0.72},{k:22,m:0.90},{k:24,m:0.99}];
 function defaults(){
   return {weights:{}, payoutText:"85", payout:85, refinery:{gold:100,platinum:100,silver:100},
+          gold:GOLD_DEFAULT.map(function(g){ return {k:g.k,m:g.m}; }),
           manual:{}, manualAt:{}, live:{}, liveAt:{}};
 }
 var S = defaults();
 try{ var raw = localStorage.getItem(KEY); if(raw){ var o = JSON.parse(raw); for(var k in o) S[k]=o[k]; } }catch(e){}
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
+function fmt3(v){ return v.toFixed(3).replace(/^0\./,"."); }
+function fmtM(v){ var t=String(Math.round(v*10000)/10000); if(/^0\.\d$/.test(t)) t+="0"; return t.replace(/^0\./,"."); }
+function goldFull(k){ return k>=24?0.999:k/24; }
+function syncGold(){
+  if(!Array.isArray(S.gold)||!S.gold.length) S.gold=defaults().gold;
+  S.gold.sort(function(a,b){ return a.k-b.k; });
+  METALS[0].purities=S.gold.map(function(g){ var f=goldFull(g.k);
+    return {id:"au"+g.k, l:g.k+"K", d:fmt3(f)+"<br>melt "+fmtM(g.m), f:f, m:g.m}; });
+}
+syncGold();
 
 var usdF = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",minimumFractionDigits:2,maximumFractionDigits:2});
 function usd(v){ return usdF.format(v||0); }
@@ -233,13 +257,16 @@ function source(m){
 function spot(m){ var s=source(m); return s==="manual"?S.manual[m]: s==="live"?S.live[m]:0; }
 
 // ---------- build UI ----------
-var spotsEl=$("spots"), secEl=$("sections"), cells={};
+var spotsEl=$("spots"), secEl=$("sections"), cells={}, allIds=[];
 METALS.forEach(function(M){
   var b=document.createElement("button"); b.className="spot"; b.id="spot-"+M.id;
   b.innerHTML='<div class="hd"><span class="nm">'+M.name.toUpperCase()+'</span><span class="badge"></span></div><div class="px num"></div><div class="pg num"></div>';
   b.addEventListener("click",function(){ openSpot(M); });
   spotsEl.appendChild(b);
-
+});
+function buildSections(){
+ secEl.innerHTML=""; cells={}; allIds=[];
+ METALS.forEach(function(M){
   var sec=document.createElement("div"); sec.className="sec";
   sec.innerHTML='<div class="sechd"><span class="t">'+M.name.toUpperCase()+'</span><span class="ref" id="ref-'+M.id+'" style="display:none"></span><span class="sub num" id="sub-'+M.id+'"></span></div>';
   M.purities.forEach(function(P){
@@ -257,8 +284,10 @@ METALS.forEach(function(M){
     cells[P.id]={gt:v[0].children[0],gp:v[0].children[1],bt:v[1].children[0],bp:v[1].children[1]};
   });
   secEl.appendChild(sec);
-});
-var allIds=[]; METALS.forEach(function(M){ M.purities.forEach(function(P){ allIds.push(P.id); }); });
+ });
+ METALS.forEach(function(M){ M.purities.forEach(function(P){ allIds.push(P.id); }); });
+}
+buildSections();
 function focusNext(id){ var i=allIds.indexOf(id); if(i>=0&&i+1<allIds.length) $("w-"+allIds[i+1]).focus(); else document.activeElement.blur(); }
 
 // payout
@@ -354,7 +383,31 @@ METALS.forEach(function(M){
     S.refinery[M.id]=c===""?100:Math.max(0,Math.min(100,num(c))); save(); update(); });
   i.dataset.metal=M.id; refWrap.appendChild(d);
 });
-$("btnSettings").addEventListener("click",function(){ show("ovSet"); });
+function renderKarats(){
+  var box=$("karatList"); box.innerHTML="";
+  S.gold.forEach(function(g){
+    var r=document.createElement("div"); r.className="krow";
+    r.innerHTML='<b>'+g.k+'K</b><small>full '+fmt3(goldFull(g.k))+'</small><span>melt</span><input class="num" inputmode="decimal" autocomplete="off"><button class="kbtn minus" aria-label="Remove">−</button>';
+    var i=r.querySelector("input"); i.value=g.m;
+    i.addEventListener("input",function(){ var c=clean(i.value); if(c!==i.value) i.value=c;
+      var v=num(c); if(v>1) v=v/100; if(v>0){ g.m=v; syncGold(); buildSections(); save(); update(); } });
+    r.querySelector("button").addEventListener("click",function(){
+      if(S.gold.length<=1) return;
+      S.gold=S.gold.filter(function(x){ return x!==g; }); delete S.weights["au"+g.k];
+      syncGold(); buildSections(); renderKarats(); save(); update(); });
+    box.appendChild(r);
+  });
+}
+$("kAdd").addEventListener("click",function(){
+  var k=Math.round(num($("kNew").value)), mv=num($("mNew").value); if(mv>1) mv=mv/100;
+  var h=$("kHint");
+  if(!(k>=1&&k<=24)){ h.textContent="Enter a karat between 1 and 24."; return; }
+  if(S.gold.some(function(g){ return g.k===k; })){ h.textContent=k+"K is already in the list."; return; }
+  S.gold.push({k:k,m:mv>0?Math.round(mv*10000)/10000:Math.round(goldFull(k)*1000)/1000});
+  $("kNew").value=""; $("mNew").value=""; h.textContent=k+"K added.";
+  syncGold(); buildSections(); renderKarats(); save(); update();
+});
+$("btnSettings").addEventListener("click",function(){ renderKarats(); show("ovSet"); });
 
 var confirmAction=null;
 function ask(title,fn){ $("cfTitle").textContent=title; confirmAction=fn; show("ovConfirm"); }
@@ -364,7 +417,7 @@ $("btnClear").addEventListener("click",function(){ ask("Clear all weights?",clea
 $("setClear").addEventListener("click",function(){ hide("ovSet"); ask("Clear all weights?",clearWeights); });
 $("setReset").addEventListener("click",function(){ hide("ovSet"); ask("Reset everything?",function(){
   var live=S.live, liveAt=S.liveAt; S=defaults(); S.live=live; S.liveAt=liveAt;
-  allIds.forEach(function(id){ $("w-"+id).value=""; }); pIn.value=S.payoutText;
+  syncGold(); buildSections(); pIn.value=S.payoutText;
   Array.prototype.forEach.call(refWrap.querySelectorAll("input"),function(i){ i.value=100; });
   save(); update(); }); });
 

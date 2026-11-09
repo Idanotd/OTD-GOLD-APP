@@ -168,7 +168,7 @@ html,body{margin:0;color:var(--text);
   <div class="formula">
     Pure $/g = Spot per oz ÷ 31.1034768<br>
     <span class="g">FULL = grams × purity × Pure $/g</span><br>
-    <span class="b">MELT = FULL × Refinery % × Payout %</span>
+    <span class="b">MELT = SPOT × Melt purity × Refinery % × Payout %</span>
   </div>
   <div class="sectitle">RESET</div>
   <button class="btn sec2" id="setClear">Clear all weights</button>
@@ -189,9 +189,9 @@ html,body{margin:0;color:var(--text);
 var OZ = 31.1034768;
 var METALS = [
   {id:"gold", name:"Gold", sym:"XAU", purities:[
-    {id:"au10",l:"10K",d:".417",f:10/24},{id:"au14",l:"14K",d:".583",f:14/24},
-    {id:"au18",l:"18K",d:".750",f:18/24},{id:"au22",l:"22K",d:".917",f:22/24},
-    {id:"au24",l:"24K",d:".999",f:0.999}]},
+    {id:"au10",l:"10K",d:".417<br>melt .39",f:10/24,m:0.39},{id:"au14",l:"14K",d:".583<br>melt .56",f:14/24,m:0.56},
+    {id:"au18",l:"18K",d:".750<br>melt .72",f:18/24,m:0.72},{id:"au22",l:"22K",d:".917<br>melt .90",f:22/24,m:0.90},
+    {id:"au24",l:"24K",d:".999<br>melt .99",f:0.999,m:0.99}]},
   {id:"platinum", name:"Platinum", sym:"XPT", purities:[
     {id:"pt900",l:"PT900",d:".900",f:0.900},{id:"pt950",l:"PT950",d:".950",f:0.950},
     {id:"pt999",l:"PT999",d:".999",f:0.999}]},
@@ -291,7 +291,7 @@ function update(){
     var g=0,f=0,m=0;
     M.purities.forEach(function(P){
       var w=num(S.weights[P.id]||"");
-      var fpg=pure*P.f, mpg=fpg*(ref/100)*(payout/100);
+      var fpg=pure*P.f, mpg=pure*(P.m||P.f)*(ref/100)*(payout/100);
       var c=cells[P.id];
       c.gt.textContent=usd(fpg*w); c.bt.textContent=usd(mpg*w);
       c.gt.classList.toggle("dim",!(w>0)); c.bt.classList.toggle("dim",!(w>0));
